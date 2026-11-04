@@ -69,3 +69,30 @@ def test_doc_forge_compilation(tmp_path: Path):
     assert len(loaded.tables) == 1
     assert loaded.tables[0].rows[1].cells[0].text == "Status"
     assert loaded.tables[0].rows[1].cells[1].text == "HEALTHY"
+
+
+from aether_agent import OSAgentPlan, execute_os_plan
+
+def test_aether_agent_full_pipeline_execution(tmp_path: Path):
+    # Create duplicate + mixed files in tmp_path
+    (tmp_path / "a.txt").write_text("same content", encoding="utf-8")
+    (tmp_path / "a_dup.txt").write_text("same content", encoding="utf-8")
+    (tmp_path / "data.csv").write_text("x,y\n1,2", encoding="utf-8")
+
+    plan = OSAgentPlan(
+        thought_process="Clean duplicates, organize files, and generate audit report.",
+        action_type="full_steward_pipeline",
+        target_directory=str(tmp_path),
+        document_spec=DocumentSpec(
+            filename="audit.docx",
+            title="Storage Audit",
+            sections=[DocSection(heading="Summary", body="Cleaned 1 duplicate.")],
+        ),
+    )
+
+    res = execute_os_plan(plan)
+    assert len(res["trashed_duplicates"]) == 1
+    assert "Documents" in res["organized_files"]
+    assert "Data" in res["organized_files"]
+    assert res["generated_docx"] is not None
+    assert Path(res["generated_docx"]).exists()
