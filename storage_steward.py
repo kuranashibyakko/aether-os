@@ -20,6 +20,48 @@ CATEGORY_MAP = {
     ".gz": "Archives",
 }
 
+from pathlib import Path
+import json
+import shutil
+
+def restore_from_trash(filename: str, trash_dir: str = ".aether_trash") -> dict[str, str]:
+    """Restores a trashed file back to its original path using `manifest.json`."""
+    trash_path = Path(trash_dir).resolve()
+    manifest_file = trash_path / "manifest.json"
+
+    if not manifest_file.exists():
+        raise FileNotFoundError("Trash manifest does not exist.")
+
+    manifest: dict[str, str] = json.loads(
+        manifest_file.read_text(encoding="utf-8")
+    )
+    if filename not in manifest:
+        raise KeyError(f"'{filename}' not found in trash manifest.")
+
+    trashed_file = trash_path / filename
+    if not trashed_file.exists():
+        raise FileNotFoundError(
+            f"Trashed payload missing on disk: {trashed_file}"
+        )
+
+    original_dest = Path(manifest[filename])
+    original_dest.parent.mkdir(parents=True, exist_ok=True)
+
+    # Transactional Restore
+    shutil.move(str(trashed_file), str(original_dest))
+
+    manifest.pop(filename)
+
+    manifest_file.write_text(
+        json.dumps(manifest, indent=2),
+        encoding="utf-8"
+    )
+
+    return {
+        "status": "restored",
+        "filename": filename,
+        "restored_to": str(original_dest),
+    }
 
 def compute_file_sha256(filepath: Path) -> str:
     """Computes the SHA-256 hash of a file's contents in 64KB chunks."""
