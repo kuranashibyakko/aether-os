@@ -96,3 +96,46 @@ def test_aether_agent_full_pipeline_execution(tmp_path: Path):
     assert "Data" in res["organized_files"]
     assert res["generated_docx"] is not None
     assert Path(res["generated_docx"]).exists()
+
+
+from storage_steward import restore_from_trash
+from daemon import daemon_tick
+
+def test_restore_from_trash(tmp_path: Path):
+    target_file = tmp_path / "important_key.txt"
+    trash_dir = tmp_path / ".trash"
+    target_file.write_text("SECRET_PAYLOAD", encoding="utf-8")
+
+    # 1. Safe delete
+    safe_delete_file(str(target_file), trash_dir=str(trash_dir))
+    assert not target_file.exists()
+
+    # 2. Restore from trash using manifest.json
+    res = restore_from_trash("important_key.txt", trash_dir=str(trash_dir))
+    assert res["status"] == "restored"
+    assert target_file.exists()
+    assert target_file.read_text(encoding="utf-8") == "SECRET_PAYLOAD"
+
+
+def test_daemon_tick_idempotency(tmp_path: Path):
+    watch_dir = tmp_path / "watch"
+    trash_dir = tmp_path / ".trash"
+    log_file = tmp_path / "daemon.jsonl"
+    watch_dir.mkdir()
+
+    (watch_dir / "a.txt").write_text("dup", encoding="utf-8")
+    (watch_dir / "b.txt").write_text("dup", encoding="utf-8")
+    (watch_dir / "code.py").write_text("x = 1", encoding="utf-8")
+
+    # Tick 1: Should trash 1 duplicate, organize remaining 2 files, and log event
+    ev1 = daemon_tick(str(watch_dir), trash_dir=str(trash_dir), log_file=str(log_file))
+    assert ev1["action_taken"] is True
+    assert len(ev1["trashed"]) == 1
+    assert "Documents" in ev1["organized"]
+    assert "Code" in ev1["organized"]
+    assert log_file.exists()
+
+    # Tick 2: Folder is already clean; should take NO action
+    ev2 = daemon_tick(str(watch_dir), trash_dir=str(trash_dir), log_file=str(log_file))
+    assert ev2["action_taken"] is False
+    assert len(log_file.read_text(encoding="utf-8").strip().splitlines()) == 1

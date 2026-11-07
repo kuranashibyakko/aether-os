@@ -7,3 +7,4 @@ sandbox_dir/
 .aether_trash/
 *.docx
 *.pdf
+.aether_daemon.jsonl
